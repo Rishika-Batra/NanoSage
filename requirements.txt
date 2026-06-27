@@ -1,6 +1,5 @@
-torch
-numpy
-datasets
-tqdm
-matplotlib
-tiktoken
+fastapi
+uvicorn
+httpx
+pydantic
+python-multipart
