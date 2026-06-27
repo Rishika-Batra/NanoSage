@@ -45,7 +45,8 @@ function ChatMessage({ msg }) {
           <div className="ai-card px-4 py-3 rounded-xl text-sm leading-relaxed break-words">
             {isThinking ? <TypingDots /> : (
               <>
-                <span className="whitespace-pre-wrap">{(msg.content || '…').trimEnd()}</span>{msg.streaming && <span className="cursor-blink inline-block w-0.5 h-4 ml-1 align-middle" style={{background:'#c9956b'}} />}
+                <span className="whitespace-pre-wrap">{(msg.content || '…').trimEnd()}</span>
+                {msg.streaming && <span className="cursor-blink inline-block w-0.5 h-4 ml-1 align-middle" style={{background:'#c9956b'}} />}
               </>
             )}
           </div>
@@ -63,7 +64,7 @@ function ChatMessage({ msg }) {
 function WelcomeScreen({ greeting }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center p-6 max-w-lg mx-auto h-full my-auto">
-      <img src="/logo.png" className="w-40 h-40" style={{marginBottom:"-16px"}} style={{objectFit:"contain", filter:"drop-shadow(0 0 16px rgba(181,98,106,0.5))"}} alt="NanoSage" />
+      <img src="/logo.png" className="w-40 h-40" style={{objectFit:"contain", filter:"drop-shadow(0 0 16px rgba(181,98,106,0.5))", marginBottom:"-16px"}} alt="NanoSage" />
       <h2 className="text-2xl font-bold tracking-tight mb-3" style={{color:'#f5e6d8'}}>{greeting}</h2>
       <p className="text-sm" style={{color:'rgba(212,165,116,0.4)'}}>Type a message below to get started.</p>
     </div>
@@ -91,7 +92,7 @@ export default function App() {
 
   const greetingIdx = useRef(Math.floor(Math.random() * GREETINGS.length))
   const [sessions, setSessions] = useState([])
-  const [activeSession, setActiveSession] = useState(null) // full session object
+  const [activeSession, setActiveSession] = useState(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [input, setInput] = useState('')
@@ -102,7 +103,6 @@ export default function App() {
 
   const messages = activeSession?.messages || []
 
-  // Load sessions on login
   useEffect(() => {
     if (!user?.email) { setSessions([]); setActiveSession(null); return }
     try {
@@ -112,7 +112,6 @@ export default function App() {
     setActiveSession(null)
   }, [user?.email])
 
-  // Save sessions
   useEffect(() => {
     if (!user?.email) return
     localStorage.setItem(getSessionKey(user.email), JSON.stringify(sessions))
@@ -147,7 +146,6 @@ export default function App() {
 
     const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-    // Create or use existing session
     let session = activeSession
     if (!session) {
       const newSession = {
@@ -165,12 +163,10 @@ export default function App() {
     const aiMsg = { id: aiMsgId, role: 'assistant', content: '', streaming: true, timestamp: null }
     const withUser = [...session.messages, userMsg, aiMsg]
 
-    // Update active session with user message immediately
     const updatedSession = { ...session, messages: withUser }
     setActiveSession(updatedSession)
     setIsGenerating(true)
 
-    // Build history
     const historyPairs = []
     for (let i = 0; i < session.messages.length - 1; i++) {
       const cur = session.messages[i], nxt = session.messages[i + 1]
@@ -183,45 +179,56 @@ export default function App() {
       const controller = new AbortController()
       abortRef.current = controller
 
-      const response = await fetch(`${API_BASE}/stream`, {
+      // Call HuggingFace API directly — no backend needed!
+      const prompt = buildPrompt(text, historyPairs.slice(-3))
+      const hfResponse = await fetch(HF_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: historyPairs.slice(-3) }),
+        headers: {
+          'Authorization': `Bearer ${HF_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: {
+            max_new_tokens: 200,
+            temperature: 0.7,
+            top_p: 0.9,
+            do_sample: true,
+            return_full_text: false,
+          }
+        }),
         signal: controller.signal,
       })
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      if (!hfResponse.ok) throw new Error(`HF API error: ${hfResponse.status}`)
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
+      const hfData = await hfResponse.json()
       let accumulated = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        for (const line of chunk.split('\n')) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6).trim()
-          if (data === '[DONE]') break
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.token) {
-              accumulated += parsed.token
-              const snap = accumulated
-              setActiveSession(prev => {
-                if (!prev) return prev
-                return {
-                  ...prev,
-                  messages: prev.messages.map(m =>
-                    m.id === aiMsgId ? { ...m, content: snap, streaming: true } : m
-                  )
-                }
-              })
-            }
-          } catch {}
-        }
+      if (Array.isArray(hfData) && hfData[0]?.generated_text) {
+        accumulated = hfData[0].generated_text
+      } else if (hfData.generated_text) {
+        accumulated = hfData.generated_text
+      } else if (hfData.error) {
+        throw new Error(hfData.error)
       }
+
+      // Clean up response — remove echoed instruction
+      if (accumulated.includes('### Response:')) {
+        accumulated = accumulated.split('### Response:').pop().trim()
+      }
+      // Remove trailing incomplete sentences
+      accumulated = accumulated.trim()
+
+      setActiveSession(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          messages: prev.messages.map(m =>
+            m.id === aiMsgId ? { ...m, content: accumulated, streaming: true } : m
+          )
+        }
+      })
 
       const finalMsgs = withUser.map(m =>
         m.id === aiMsgId ? { ...m, content: accumulated || '(no response)', streaming: false, timestamp: now() } : m
