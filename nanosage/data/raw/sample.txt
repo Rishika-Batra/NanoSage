@@ -1,0 +1,6 @@
+NanoSage is a tiny GPT-style model. It is designed for educational purposes.
+We can train it on text. We can generate text from it.
+It works by predicting the next token in a sequence.
+This is a sample text corpus for pretraining and verification.
+Let's see if the code runs successfully.
+Thank you for trying out NanoSage!
