@@ -3,6 +3,8 @@ import './index.css'
 import Login from './Login'
 
 const API_BASE = 'https://nanosage.onrender.com'
+const HF_TOKEN = import.meta.env.VITE_HF_TOKEN
+const HF_URL = 'https://api-inference.huggingface.co/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0'
 
 const GREETINGS = [
   (name) => `Hi ${name}! Ready to explore something new today?`,
@@ -66,6 +68,19 @@ function WelcomeScreen({ greeting }) {
       <p className="text-sm" style={{color:'rgba(212,165,116,0.4)'}}>Type a message below to get started.</p>
     </div>
   )
+}
+
+function buildPrompt(message, history) {
+  let prompt = "### System:\nYou are NanoSage, a helpful AI assistant.\n\n"
+  if (history) {
+    for (const turn of history) {
+      if (turn.user && turn.assistant) {
+        prompt += `### Instruction:\n${turn.user}\n\n### Response:\n${turn.assistant}\n\n`
+      }
+    }
+  }
+  prompt += `### Instruction:\n${message}\n\n### Response:\n`
+  return prompt
 }
 
 export default function App() {
