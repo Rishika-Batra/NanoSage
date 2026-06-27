@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import './index.css'
 import Login from './Login'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = 'https://nanosage.onrender.com'
 
 const GREETINGS = [
   (name) => `Hi ${name}! Ready to explore something new today?`,
