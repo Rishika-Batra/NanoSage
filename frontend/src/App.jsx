@@ -178,7 +178,7 @@ export default function App() {
       abortRef.current = controller
 
       // Call HuggingFace API directly — no backend needed!
-       = await fetch(`${API_BASE}/chat`, {
+      const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
