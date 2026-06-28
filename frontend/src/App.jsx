@@ -2,9 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import './index.css'
 import Login from './Login'
 
-const API_BASE = 'https://nanosage.onrender.com'
-const HF_TOKEN = import.meta.env.VITE_HF_TOKEN
-const HF_URL = 'https://api-inference.huggingface.co/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0'
+const API_BASE = 'https://Rishika2119-nanosage-api.hf.space'
 
 const GREETINGS = [
   (name) => `Hi ${name}! Ready to explore something new today?`,
