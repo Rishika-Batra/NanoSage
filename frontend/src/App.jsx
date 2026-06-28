@@ -178,29 +178,18 @@ export default function App() {
       abortRef.current = controller
 
       // Call HuggingFace API directly — no backend needed!
-      const prompt = buildPrompt(text, historyPairs.slice(-3))
-      const hfResponse = await fetch(HF_URL, {
+       = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${HF_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            max_new_tokens: 200,
-            temperature: 0.7,
-            top_p: 0.9,
-            do_sample: true,
-            return_full_text: false,
-          }
-        }),
+        body: JSON.stringify({ message: text, history: historyPairs.slice(-3) }),
         signal: controller.signal,
       })
 
-      if (!hfResponse.ok) throw new Error(`HF API error: ${hfResponse.status}`)
+      if (!response.ok) throw new Error(`HF API error: ${response.status}`)
 
-      const hfData = await hfResponse.json()
+      const hfData = await response.json()
       let accumulated = ''
 
       if (Array.isArray(hfData) && hfData[0]?.generated_text) {
