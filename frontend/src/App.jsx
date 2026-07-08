@@ -172,7 +172,24 @@ export default function App() {
         const local = saved ? JSON.parse(saved) : []
         setSessions(local)
         const cloud = await loadSessions(user.email)
-        if (cloud.length > 0) setSessions(cloud)
+        if (cloud.length > 0) {
+          // Merge: keep most recent version of each session by id
+          const merged = [...cloud]
+          for (const localSession of local) {
+            const cloudIdx = merged.findIndex(s => s.id === localSession.id)
+            if (cloudIdx === -1) {
+              merged.push(localSession)
+            } else {
+              // Keep whichever has more messages
+              if (localSession.messages.length > merged[cloudIdx].messages.length) {
+                merged[cloudIdx] = localSession
+              }
+            }
+          }
+          // Sort by id descending (newest first)
+          merged.sort((a, b) => Number(b.id) - Number(a.id))
+          setSessions(merged)
+        }
       } catch { setSessions([]) }
     }
     load()
