@@ -217,3 +217,147 @@ body { margin: 0; padding: 0; overflow: hidden; background: #080608; }
   text-align: center;
   margin: 0;
 }
+
+/* ── Attach Button ── */
+.attach-btn {
+  color: rgba(212, 165, 116, 0.45);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.attach-btn:hover:not(:disabled) {
+  color: #e8c4a8;
+  background: rgba(212, 165, 116, 0.1);
+}
+.attach-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── Mic Button ── */
+.mic-btn {
+  color: rgba(212, 165, 116, 0.45);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.mic-btn:hover:not(:disabled):not(.mic-recording) {
+  color: #e8c4a8;
+  background: rgba(212, 165, 116, 0.1);
+}
+.mic-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.mic-recording {
+  color: #ff4444 !important;
+  background: rgba(255, 68, 68, 0.15) !important;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); transform: scale(1); }
+  50%      { box-shadow: 0 0 0 8px rgba(255, 68, 68, 0); transform: scale(1.08); }
+}
+
+/* ── Recording Indicator ── */
+.recording-indicator {
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  color: #ff6b6b;
+  display: inline-flex;
+  width: fit-content;
+  animation: fade-slide-up 0.2s ease-out;
+}
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4444;
+  display: inline-block;
+  animation: recording-blink 1s ease-in-out infinite;
+}
+@keyframes recording-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.3; transform: scale(0.8); }
+}
+
+/* ── Attachment Chips ── */
+.attachment-bar {
+  animation: fade-slide-up 0.2s ease-out;
+}
+.attachment-chip {
+  background: rgba(201, 149, 107, 0.12);
+  border: 1px solid rgba(201, 149, 107, 0.25);
+  color: #e8c4a8;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.attachment-remove {
+  background: none;
+  border: none;
+  color: rgba(212, 165, 116, 0.4);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.attachment-remove:hover {
+  color: #f87171;
+}
+
+/* ── PDF Spinner ── */
+.pdf-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(201, 149, 107, 0.2);
+  border-top-color: #c9956b;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Image Preview in Chat ── */
+.image-preview-bubble {
+  border: 1px solid rgba(212, 165, 116, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.image-preview-bubble img {
+  max-height: 200px;
+  object-fit: cover;
+}
+
+/* ── Error Toast ── */
+.error-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: rgba(220, 38, 38, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 8px 32px rgba(220, 38, 38, 0.3);
+  max-width: 90vw;
+}
+.error-icon {
+  font-size: 16px;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

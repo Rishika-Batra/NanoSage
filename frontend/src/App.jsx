@@ -4,6 +4,9 @@ import Login from './Login'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const TEXT_MODEL = 'llama-3.1-8b-instant'
+const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 const GREETINGS = [
   (name) => `Hi ${name}! Ready to explore something new today?`,
@@ -36,9 +39,15 @@ function ChatMessage({ msg }) {
   return (
     <div className={`msg-enter flex w-full gap-3 ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
       <div className={`flex flex-col max-w-[85%] sm:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+        {/* Show image thumbnail if the message has an image */}
+        {msg.imagePreview && (
+          <div className="image-preview-bubble mb-2 rounded-xl overflow-hidden" style={{maxWidth: '240px'}}>
+            <img src={msg.imagePreview} alt="Uploaded" className="w-full h-auto rounded-xl" style={{display:'block'}} />
+          </div>
+        )}
         {isUser ? (
           <div className="user-bubble px-4 py-3 rounded-2xl rounded-tr-sm text-sm text-white leading-relaxed break-words">
-            {msg.content}
+            {msg.displayContent || msg.content}
           </div>
         ) : (
           <div className="ai-card px-4 py-3 rounded-xl text-sm leading-relaxed break-words">
@@ -83,6 +92,35 @@ function buildPrompt(message, history) {
   return prompt
 }
 
+// ── PDF text extraction using PDF.js ──
+async function extractPdfText(file) {
+  const pdfjsLib = window.pdfjsLib
+  if (!pdfjsLib) throw new Error('PDF.js not loaded. Please refresh the page.')
+
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  let fullText = ''
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const strings = content.items.map(item => item.str)
+    fullText += strings.join(' ') + '\n'
+  }
+
+  return fullText.trim()
+}
+
+// ── Convert image file to base64 data URL ──
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function App() {
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('nanosage_user') || 'null') }
@@ -96,11 +134,34 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [input, setInput] = useState('')
 
+  // Voice input state
+  const [isRecording, setIsRecording] = useState(false)
+  const recognitionRef = useRef(null)
+
+  // PDF upload state
+  const [pdfContext, setPdfContext] = useState(null) // { name, text }
+  const [pdfLoading, setPdfLoading] = useState(false)
+
+  // Image upload state
+  const [imageAttachment, setImageAttachment] = useState(null) // { name, base64, preview }
+
+  // Error toast state
+  const [errorMsg, setErrorMsg] = useState('')
+  const errorTimeout = useRef(null)
+
   const messagesEndRef = useRef(null)
   const abortRef = useRef(null)
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   const messages = activeSession?.messages || []
+
+  // ── Show error toast ──
+  const showError = useCallback((msg) => {
+    setErrorMsg(msg)
+    if (errorTimeout.current) clearTimeout(errorTimeout.current)
+    errorTimeout.current = setTimeout(() => setErrorMsg(''), 5000)
+  }, [])
 
   useEffect(() => {
     if (!user?.email) { setSessions([]); setActiveSession(null); return }
@@ -140,10 +201,113 @@ export default function App() {
     ))
   }
 
+  // ── Voice Input ──
+  const startRecording = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      showError('Your browser does not support voice input. Try Chrome or Edge.')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'en-US'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.continuous = false
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript
+      setInput(prev => prev ? prev + ' ' + transcript : transcript)
+    }
+
+    recognition.onerror = (event) => {
+      if (event.error !== 'aborted') {
+        showError(`Voice error: ${event.error}`)
+      }
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setIsRecording(false)
+  }
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording()
+    else startRecording()
+  }
+
+  // ── File Upload Handler ──
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset file input so re-selecting the same file triggers onChange
+    e.target.value = ''
+
+    if (file.size > MAX_FILE_SIZE) {
+      showError(`File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`)
+      return
+    }
+
+    const ext = file.name.toLowerCase().split('.').pop()
+
+    if (ext === 'pdf') {
+      try {
+        setPdfLoading(true)
+        const text = await extractPdfText(file)
+        if (!text) {
+          showError('Could not extract text from this PDF. It may be scanned/image-based.')
+          return
+        }
+        setPdfContext({ name: file.name, text })
+        // Clear any image attachment when PDF is loaded
+        setImageAttachment(null)
+      } catch (err) {
+        showError(`PDF error: ${err.message}`)
+      } finally {
+        setPdfLoading(false)
+      }
+    } else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+      try {
+        const base64 = await fileToBase64(file)
+        setImageAttachment({ name: file.name, base64, preview: base64 })
+        // Clear PDF context when image is loaded
+        setPdfContext(null)
+      } catch (err) {
+        showError(`Image error: ${err.message}`)
+      }
+    } else {
+      showError('Unsupported file type. Please upload a PDF, JPG, PNG, or WebP file.')
+    }
+  }
+
+  // ── Send Message (updated for PDF + Image) ──
   const sendMessage = async (text) => {
     if (!text.trim() || isGenerating) return
 
     const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+    // Determine what we're sending
+    const hasPdf = !!pdfContext
+    const hasImage = !!imageAttachment
+    const currentPdfContext = pdfContext
+    const currentImageAttachment = imageAttachment
+
+    // Clear attachments after capturing
+    setPdfContext(null)
+    setImageAttachment(null)
 
     let session = activeSession
     if (!session) {
@@ -157,7 +321,23 @@ export default function App() {
       session = newSession
     }
 
-    const userMsg = { id: Date.now(), role: 'user', content: text, timestamp: now() }
+    // Build the actual content to send to the API
+    let apiContent = text
+    if (hasPdf) {
+      apiContent = `Here is a PDF document:\n${currentPdfContext.text}\n\nNow answer: ${text}`
+    }
+
+    // For display: show the user's typed text (not the full PDF dump)
+    const displayContent = hasPdf ? `📄 ${currentPdfContext.name}\n${text}` : text
+
+    const userMsg = {
+      id: Date.now(),
+      role: 'user',
+      content: apiContent,
+      displayContent: displayContent,
+      timestamp: now(),
+      imagePreview: hasImage ? currentImageAttachment.preview : null,
+    }
     const aiMsgId = Date.now() + 1
     const aiMsg = { id: aiMsgId, role: 'assistant', content: '', streaming: true, timestamp: null }
     const withUser = [...session.messages, userMsg, aiMsg]
@@ -178,7 +358,51 @@ export default function App() {
       const controller = new AbortController()
       abortRef.current = controller
 
-      // Call HuggingFace API directly — no backend needed!
+      // Select model based on whether we have an image
+      const model = hasImage ? VISION_MODEL : TEXT_MODEL
+
+      // Build messages array
+      let apiMessages
+      if (hasImage) {
+        // Vision API: send image as base64 content part
+        const base64Data = currentImageAttachment.base64
+        // Extract the data URL parts
+        const mediaType = base64Data.split(';')[0].split(':')[1]
+        const base64Only = base64Data.split(',')[1]
+
+        apiMessages = [
+          { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch. You can analyze images.' },
+          ...historyPairs.slice(-3).flatMap(h => [
+            { role: 'user', content: h.user },
+            { role: 'assistant', content: h.assistant }
+          ]),
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mediaType};base64,${base64Only}`,
+                },
+              },
+              {
+                type: 'text',
+                text: text,
+              },
+            ],
+          },
+        ]
+      } else {
+        apiMessages = [
+          { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch.' },
+          ...historyPairs.slice(-3).flatMap(h => [
+            { role: 'user', content: h.user },
+            { role: 'assistant', content: h.assistant }
+          ]),
+          { role: 'user', content: apiContent }
+        ]
+      }
+
       const response = await fetch(GROQ_URL, {
         method: 'POST',
         headers: {
@@ -186,15 +410,8 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch.' },
-            ...historyPairs.slice(-3).flatMap(h => [
-              { role: 'user', content: h.user },
-              { role: 'assistant', content: h.assistant }
-            ]),
-            { role: 'user', content: text }
-          ],
+          model,
+          messages: apiMessages,
           max_tokens: 1024,
           temperature: 0.7,
         }),
@@ -247,6 +464,8 @@ export default function App() {
     abortRef.current?.abort()
     setActiveSession(null)
     setIsGenerating(false)
+    setPdfContext(null)
+    setImageAttachment(null)
   }
 
   const selectSession = (s) => {
@@ -375,13 +594,94 @@ export default function App() {
         </div>
 
         <footer className="w-full max-w-3xl mx-auto px-4 pb-4 pt-2 shrink-0">
+          {/* Attachment chips */}
+          {(pdfContext || imageAttachment || pdfLoading) && (
+            <div className="attachment-bar flex items-center gap-2 mb-2 px-2">
+              {pdfLoading && (
+                <div className="attachment-chip flex items-center gap-2 px-3 py-1.5 rounded-full text-xs">
+                  <span className="pdf-spinner" />
+                  <span>Extracting PDF text…</span>
+                </div>
+              )}
+              {pdfContext && (
+                <div className="attachment-chip flex items-center gap-2 px-3 py-1.5 rounded-full text-xs">
+                  <span>📄</span>
+                  <span className="truncate max-w-[180px]">{pdfContext.name}</span>
+                  <button
+                    onClick={() => setPdfContext(null)}
+                    className="attachment-remove"
+                    title="Remove PDF"
+                  >✕</button>
+                </div>
+              )}
+              {imageAttachment && (
+                <div className="attachment-chip flex items-center gap-2 px-3 py-1.5 rounded-full text-xs">
+                  <img src={imageAttachment.preview} alt="" className="w-6 h-6 rounded object-cover" />
+                  <span className="truncate max-w-[180px]">{imageAttachment.name}</span>
+                  <button
+                    onClick={() => setImageAttachment(null)}
+                    className="attachment-remove"
+                    title="Remove image"
+                  >✕</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Voice recording indicator */}
+          {isRecording && (
+            <div className="recording-indicator flex items-center gap-2 mb-2 px-3 py-1.5 rounded-full text-xs mx-2">
+              <span className="recording-dot" />
+              <span>Listening…</span>
+            </div>
+          )}
+
           <div className="input-glass relative flex items-end rounded-3xl p-1.5 transition-all">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              onChange={handleFileUpload}
+              className="hidden"
+              style={{display: 'none'}}
+            />
+
+            {/* Attach button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isGenerating || pdfLoading}
+              className="attach-btn w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0"
+              title="Attach PDF or Image"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+
             <textarea ref={textareaRef} rows={1} value={input} onChange={handleChange} onKeyDown={handleKey}
               placeholder="Message NanoSage..." disabled={isGenerating}
-              className="flex-1 bg-transparent border-0 outline-none text-sm px-4 py-2.5 resize-none min-h-[40px] max-h-[160px] leading-relaxed"
+              className="flex-1 bg-transparent border-0 outline-none text-sm px-3 py-2.5 resize-none min-h-[40px] max-h-[160px] leading-relaxed"
               style={{color:'#e8d5c4'}} />
+
+            {/* Mic button */}
+            <button
+              onClick={toggleRecording}
+              disabled={isGenerating}
+              className={`mic-btn w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 ${isRecording ? 'mic-recording' : ''}`}
+              title={isRecording ? 'Stop recording' : 'Voice input'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="23" />
+                <line x1="8" y1="23" x2="16" y2="23" />
+              </svg>
+            </button>
+
+            {/* Send button */}
             <button onClick={submit} disabled={isGenerating || !input.trim()}
-              className={`send-btn w-9 h-9 rounded-full flex items-center justify-center text-white transition-all shrink-0 ml-2 ${isGenerating || !input.trim() ? 'send-disabled' : 'send-active'}`}>
+              className={`send-btn w-9 h-9 rounded-full flex items-center justify-center text-white transition-all shrink-0 ml-1 ${isGenerating || !input.trim() ? 'send-disabled' : 'send-active'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
             </button>
           </div>
@@ -390,6 +690,14 @@ export default function App() {
           </p>
         </footer>
       </div>
+
+      {/* Error toast */}
+      {errorMsg && (
+        <div className="error-toast" onClick={() => setErrorMsg('')}>
+          <span className="error-icon">⚠️</span>
+          <span>{errorMsg}</span>
+        </div>
+      )}
     </div>
   )
 }
