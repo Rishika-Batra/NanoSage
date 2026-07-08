@@ -23,6 +23,7 @@ NanoSage covers the complete LLM lifecycle: **pretraining → instruction finetu
 
 - [What is NanoSage?](#-what-is-nanosage)
 - [Architecture Details](#-architecture-details)
+- [React Chat Frontend](#-react-chat-frontend)
 - [Quick Start](#-quick-start)
 - [Full Usage Guide](#-full-usage-guide)
   - [1. Pretraining](#1-pretraining)
@@ -68,6 +69,47 @@ NanoSage implements a modernized decoder-only transformer:
 | **Positional Encoding** | **RoPE** (Rotary Positional Embeddings) | Rotate key/query vectors based on distance |
 | **Normalization** | **RMSNorm** | Root Mean Square Normalization (no mean subtraction) |
 | **Activation Block** | **SwiGLU** | Gated Swish FeedForward projection (`SiLU(xW) * xV`) |
+
+---
+
+## 💬 React Chat Frontend
+
+NanoSage includes a full-featured **React + Vite** chat interface (`frontend/`) that connects to the **Groq API** for fast inference and uses **Firebase** for cloud persistence.
+
+### 🔥 Firebase Integration
+
+Chat sessions are synced to **Cloud Firestore** in real-time, so conversations persist across devices and browsers:
+
+- **Firestore Cloud Sync** — Sessions are saved to Firestore on every update and loaded on login, with smart local/cloud merging (keeps whichever version has more messages).
+- **Google Authentication** — Users sign in with Google via Firebase Auth; each user's sessions are stored under their email in Firestore.
+- **Offline-first** — Local storage is used as a fast cache; Firestore data takes priority when available.
+
+### 🎙️ Voice Input
+
+- Tap the **microphone button** (🎤) next to the send button to dictate your message using the browser's **Web Speech API** (`SpeechRecognition`).
+- While recording, the mic icon **pulses red** and a **"Listening…"** indicator appears above the input bar.
+- When finished, the transcribed text is placed into the input box ready to send.
+- Graceful fallback: shows a clear error toast if the browser doesn't support speech recognition.
+
+### 📄 PDF Upload
+
+- Click the **attach button** (📎) and select any `.pdf` file (up to 10 MB).
+- Text is extracted client-side using **PDF.js** (loaded from cdnjs) — no backend needed.
+- The uploaded filename appears as a **chip/tag** above the input bar with a ✕ remove button.
+- When you send a message with a PDF attached, the extracted text is sent as context: `"Here is a PDF document: [text]. Now answer: [your message]"`.
+
+### 🖼️ Image Upload
+
+- Use the same attach button to upload `.jpg`, `.png`, or `.webp` images (up to 10 MB).
+- The image is converted to **base64** and displayed as a **thumbnail preview** in the chat.
+- Images are analyzed using the **Groq vision model** (`meta-llama/llama-4-scout-17b-16e-instruct`) — ask questions about any image you upload.
+
+### UI Highlights
+
+- Dark theme with glassmorphism, animated background orbs, and smooth micro-animations.
+- Fully **mobile responsive** input bar with attach, mic, and send buttons.
+- Error toasts for unsupported browsers, oversized files, or API failures.
+- Multi-session sidebar with create, switch, and delete support.
 
 ---
 

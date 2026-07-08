@@ -711,7 +711,7 @@ export default function App() {
             </button>
           </div>
           <p className="text-center text-[10px] mt-2 font-medium tracking-wide" style={{color:'rgba(212,165,116,0.2)'}}>
-            NanoSage · Built from scratch in PyTorch 🔥
+            NanoSage · Built from scratch by Rishika Batra
           </p>
         </footer>
       </div>
