@@ -195,7 +195,7 @@ export default function App() {
             ]),
             { role: 'user', content: text }
           ],
-          max_tokens: 200,
+          max_tokens: 1024,
           temperature: 0.7,
         }),
         signal: controller.signal,
