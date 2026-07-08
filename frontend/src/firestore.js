@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app"
-import { getFirestore, doc, setDoc, getDocs, deleteDoc, collection } from "firebase/firestore"
+import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore"
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -25,7 +25,6 @@ export async function saveSessions(email, sessions) {
 export async function loadSessions(email) {
   try {
     const ref = doc(db, "users", email)
-    const { getDoc } = await import("firebase/firestore")
     const snap = await getDoc(ref)
     if (snap.exists()) {
       return JSON.parse(snap.data().sessions || "[]")
