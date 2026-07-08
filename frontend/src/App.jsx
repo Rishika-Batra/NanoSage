@@ -186,7 +186,7 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama3-8b-8192',
+          model: 'llama-3.1-8b-instant',
           messages: [
             { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch.' },
             ...historyPairs.slice(-3).flatMap(h => [
