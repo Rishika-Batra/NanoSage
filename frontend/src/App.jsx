@@ -371,7 +371,7 @@ export default function App() {
         const base64Only = base64Data.split(',')[1]
 
         apiMessages = [
-          { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch. You can analyze images.' },
+          { role: 'system', content: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. You can analyze images. Current date and time: ${new Date().toLocaleString()}.` },
           ...historyPairs.slice(-3).flatMap(h => [
             { role: 'user', content: h.user },
             { role: 'assistant', content: h.assistant }
