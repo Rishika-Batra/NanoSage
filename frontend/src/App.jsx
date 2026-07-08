@@ -166,38 +166,38 @@ export default function App() {
 
   useEffect(() => {
     if (!user?.email) { setSessions([]); setActiveSession(null); return }
+    isLoadingRef.current = true
     const load = async () => {
       try {
+        const cloud = await loadSessions(user.email)
         const saved = localStorage.getItem(getSessionKey(user.email))
         const local = saved ? JSON.parse(saved) : []
-        setSessions(local)
-        const cloud = await loadSessions(user.email)
         if (cloud.length > 0) {
-          // Merge: keep most recent version of each session by id
           const merged = [...cloud]
           for (const localSession of local) {
             const cloudIdx = merged.findIndex(s => s.id === localSession.id)
             if (cloudIdx === -1) {
               merged.push(localSession)
-            } else {
-              // Keep whichever has more messages
-              if (localSession.messages.length > merged[cloudIdx].messages.length) {
-                merged[cloudIdx] = localSession
-              }
+            } else if (localSession.messages.length > merged[cloudIdx].messages.length) {
+              merged[cloudIdx] = localSession
             }
           }
-          // Sort by id descending (newest first)
           merged.sort((a, b) => Number(b.id) - Number(a.id))
           setSessions(merged)
+        } else {
+          setSessions(local)
         }
       } catch { setSessions([]) }
+      finally { isLoadingRef.current = false }
     }
     load()
     setActiveSession(null)
   }, [user?.email])
 
+  const isLoadingRef = useRef(true)
   useEffect(() => {
     if (!user?.email) return
+    if (isLoadingRef.current) return
     localStorage.setItem(getSessionKey(user.email), JSON.stringify(sessions))
     saveSessions(user.email, sessions)
   }, [sessions, user?.email])
