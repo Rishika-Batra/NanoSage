@@ -394,7 +394,7 @@ export default function App() {
         ]
       } else {
         apiMessages = [
-          { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch.' },
+          { role: 'system', content: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. Current date and time: ${new Date().toLocaleString()}.` },
           ...historyPairs.slice(-3).flatMap(h => [
             { role: 'user', content: h.user },
             { role: 'assistant', content: h.assistant }
