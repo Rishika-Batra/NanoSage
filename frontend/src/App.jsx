@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import './index.css'
 import Login from './Login'
+import { saveSessions, loadSessions } from './firestore'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
@@ -165,16 +166,23 @@ export default function App() {
 
   useEffect(() => {
     if (!user?.email) { setSessions([]); setActiveSession(null); return }
-    try {
-      const saved = localStorage.getItem(getSessionKey(user.email))
-      setSessions(saved ? JSON.parse(saved) : [])
-    } catch { setSessions([]) }
+    const load = async () => {
+      try {
+        const saved = localStorage.getItem(getSessionKey(user.email))
+        const local = saved ? JSON.parse(saved) : []
+        setSessions(local)
+        const cloud = await loadSessions(user.email)
+        if (cloud.length > 0) setSessions(cloud)
+      } catch { setSessions([]) }
+    }
+    load()
     setActiveSession(null)
   }, [user?.email])
 
   useEffect(() => {
     if (!user?.email) return
     localStorage.setItem(getSessionKey(user.email), JSON.stringify(sessions))
+    saveSessions(user.email, sessions)
   }, [sessions, user?.email])
 
   const scrollToBottom = useCallback(() => {
