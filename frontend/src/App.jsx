@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import './index.css'
 import Login from './Login'
 
-const HF_TOKEN = import.meta.env.VITE_HF_TOKEN
-const HF_URL = 'https://api-inference.huggingface.co/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0'
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 const GREETINGS = [
   (name) => `Hi ${name}! Ready to explore something new today?`,
@@ -179,31 +179,32 @@ export default function App() {
       abortRef.current = controller
 
       // Call HuggingFace API directly — no backend needed!
-      const response = await fetch(HF_URL, {
+      const response = await fetch(GROQ_URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${HF_TOKEN}`,
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inputs: `### Instruction:\n${text}\n\n### Response:\n`,
-          parameters: { max_new_tokens: 200, temperature: 0.7, return_full_text: false }
+          model: 'llama3-8b-8192',
+          messages: [
+            { role: 'system', content: 'You are NanoSage, a helpful AI assistant built from scratch in PyTorch.' },
+            ...historyPairs.slice(-3).flatMap(h => [
+              { role: 'user', content: h.user },
+              { role: 'assistant', content: h.assistant }
+            ]),
+            { role: 'user', content: text }
+          ],
+          max_tokens: 200,
+          temperature: 0.7,
         }),
         signal: controller.signal,
       })
 
-      if (!response.ok) throw new Error(`HF API error: ${response.status}`)
+      if (!response.ok) throw new Error(`Groq API error: ${response.status}`)
 
-      const hfData = await response.json()
-      let accumulated = ''
-
-      if (Array.isArray(hfData) && hfData[0]?.generated_text) {
-        accumulated = hfData[0].generated_text
-      } else if (hfData.generated_text) {
-        accumulated = hfData.generated_text
-      } else if (hfData.error) {
-        throw new Error(hfData.error)
-      }
+      const groqData = await response.json()
+      let accumulated = groqData.choices?.[0]?.message?.content || '(no response)'
 
       // Clean up response — remove echoed instruction
       if (accumulated.includes('### Response:')) {
