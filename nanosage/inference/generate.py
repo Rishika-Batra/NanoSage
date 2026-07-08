@@ -18,7 +18,9 @@ import math
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+# pyrefly: ignore [missing-import]
 import torch
+# pyrefly: ignore [missing-import]
 import torch.nn.functional as F
 
 
@@ -497,6 +499,7 @@ if __name__ == "__main__":
     import os, sys, textwrap, time
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+    # pyrefly: ignore [missing-import]
     import torch
     from nanosage.tokenizer.bpe import BPETokenizer
     from nanosage.model.transformer import NanoSageLM

@@ -25,10 +25,14 @@ from __future__ import annotations
 import math
 import os
 
+# pyrefly: ignore [missing-import]
 import matplotlib
 matplotlib.use("Agg")
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
+# pyrefly: ignore [missing-import]
 import torch
+# pyrefly: ignore [missing-import]
 from torch.optim.lr_scheduler import LambdaLR
 
 

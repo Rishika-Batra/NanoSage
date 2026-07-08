@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import './index.css'
 import Login from './Login'
 
-const API_BASE = 'https://Rishika2119-nanosage-api.hf.space'
+const HF_TOKEN = import.meta.env.VITE_HF_TOKEN
+const HF_URL = 'https://api-inference.huggingface.co/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0'
 
 const GREETINGS = [
   (name) => `Hi ${name}! Ready to explore something new today?`,
@@ -178,12 +179,16 @@ export default function App() {
       abortRef.current = controller
 
       // Call HuggingFace API directly — no backend needed!
-      const response = await fetch(`${API_BASE}/chat`, {
+      const response = await fetch(HF_URL, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${HF_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: text, history: historyPairs.slice(-3) }),
+        body: JSON.stringify({
+          inputs: `### Instruction:\n${text}\n\n### Response:\n`,
+          parameters: { max_new_tokens: 200, temperature: 0.7, return_full_text: false }
+        }),
         signal: controller.signal,
       })
 

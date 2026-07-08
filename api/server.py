@@ -1,165 +1,78 @@
-"""
-api/server.py
-NanoSage backend using Hugging Face Inference API
-"""
-
-import json
-import os
-from typing import List, Dict, Optional
-from fastapi import FastAPI, HTTPException
+import sys
+# pyrefly: ignore [missing-import]
+import torch
+# pyrefly: ignore [missing-import]
+from fastapi import FastAPI
+# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel
-import httpx
+sys.path.insert(0, '.')
+from nanosage.model.transformer import NanoSageLM
+from nanosage.tokenizer.bpe import BPETokenizer
+from nanosage.inference.generate import sample_decode, GenerationConfig
+from nanosage.inference.chat import NanoSageChat
 
-app = FastAPI(title="NanoSage LLM API", version="3.0.0")
-
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
-HF_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+model = None
+tokenizer = None
+config = None
+gen_config = None
 
-SYSTEM_PROMPT = "You are NanoSage, a helpful and intelligent AI assistant built from scratch."
-STOP_STRINGS = ["###", "<|endoftext|>", "NanoSage:"]
-
-
-def clean_response(text: str) -> str:
-    text = text.strip()
-    if text.lower().startswith("nanosage:"):
-        text = text[text.index(":")+1:].strip()
-    for stop in STOP_STRINGS:
-        if stop in text:
-            text = text[:text.index(stop)].strip()
-    return text
-
-
-def format_prompt(message: str, history=None) -> str:
-    prompt = f"### System:\n{SYSTEM_PROMPT}\n\n"
-    if history:
-        for turn in history:
-            if "user" in turn and "assistant" in turn:
-                prompt += f"### Instruction:\n{turn['user']}\n\n### Response:\n{turn['assistant']}\n\n"
-            elif turn.get("role") == "user":
-                prompt += f"### Instruction:\n{turn['content']}\n\n"
-            elif turn.get("role") == "assistant":
-                prompt += f"### Response:\n{turn['content']}\n\n"
-    prompt += f"### Instruction:\n{message}\n\n### Response:\n"
-    return prompt
-
+@app.on_event("startup")
+def startup_event():
+    global model, tokenizer, config, gen_config
+    print("Loading NanoSage...")
+    ckpt = torch.load("nanosage/checkpoints/nanosage_instruct.pt", map_location="cpu", weights_only=False)
+    config = ckpt["model_config"]
+    model = NanoSageLM(config)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.eval()
+    print(f"Model loaded!")
+    tokenizer = BPETokenizer()
+    tokenizer.load("nanosage/checkpoints/tokenizer.json")
+    eos_id = tokenizer.special_tokens.get("<|endoftext|>")
+    gen_config = GenerationConfig(
+        max_new_tokens=128,
+        temperature=0.8,
+        top_k=50,
+        top_p=0.9,
+        repetition_penalty=1.1,
+        eos_token_id=eos_id
+    )
+    print(f"Tokenizer loaded! Vocab: {len(tokenizer.vocab)}")
 
 class ChatRequest(BaseModel):
     message: str
-    history: Optional[List[Dict[str, str]]] = None
-
-
-class ChatResponse(BaseModel):
-    response: str
-
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest):
-    prompt = format_prompt(req.message, req.history)
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 256,
-            "temperature": 0.7,
-            "top_k": 50,
-            "top_p": 0.9,
-            "repetition_penalty": 1.1,
-            "return_full_text": False,
-        }
-    }
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(HF_API_URL, headers=headers, json=payload)
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"HF API error: {response.text}")
-        data = response.json()
-        text = data[0]["generated_text"] if isinstance(data, list) else data.get("generated_text", "")
-        return ChatResponse(response=clean_response(text))
-
-
-@app.get("/stream")
-async def stream_get(message: str, history: Optional[str] = None):
-    history_list = None
-    if history:
-        try:
-            history_list = json.loads(history)
-        except Exception:
-            pass
-    return await _stream_response(message, history_list)
-
-
-@app.post("/stream")
-async def stream_post(req: ChatRequest):
-    return await _stream_response(req.message, req.history)
-
-
-async def _stream_response(message: str, history) -> StreamingResponse:
-    prompt = format_prompt(message, history)
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 256,
-            "temperature": 0.7,
-            "top_k": 50,
-            "top_p": 0.9,
-            "repetition_penalty": 1.1,
-            "return_full_text": False,
-        },
-        "stream": True,
-    }
-
-    async def sse_generator():
-        async with httpx.AsyncClient(timeout=60) as client:
-            async with client.stream("POST", HF_API_URL, headers=headers, json=payload) as response:
-                full = ""
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        parsed = json.loads(data)
-                        token = parsed.get("token", {}).get("text", "")
-                        if not token:
-                            continue
-                        full += token
-                        stop_hit = False
-                        for stop in STOP_STRINGS:
-                            if stop in full:
-                                clean = full[:full.index(stop)].strip()
-                                already = full[:full.index(stop)-len(token)]
-                                new_part = clean[len(already):]
-                                if new_part:
-                                    yield f"data: {json.dumps({'token': new_part})}\n\n"
-                                stop_hit = True
-                                break
-                        if stop_hit:
-                            break
-                        yield f"data: {json.dumps({'token': token})}\n\n"
-                    except Exception:
-                        continue
-                yield "data: [DONE]\n\n"
-
-    return StreamingResponse(sse_generator(), media_type="text/event-stream")
-
+    history: list = []
 
 @app.get("/health")
-async def health():
+def health():
     return {
-        "status": "healthy",
-        "model_name": "NanoSage (TinyLlama via HF API)",
-        "model": HF_MODEL,
+        "status": "online",
+        "model": "NanoSage",
+        "params": f"{sum(p.numel() for p in model.parameters())/1e6:.2f}M"
     }
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    chat_manager = NanoSageChat(max_history=3)
+    for turn in req.history[-3:]:
+        chat_manager.add_turn(turn.get("user", ""), turn.get("assistant", ""))
+    prompt = chat_manager.get_formatted_prompt(req.message)
+    response = sample_decode(
+        model=model,
+        tokenizer=tokenizer,
+        prompt=prompt,
+        config=gen_config,
+        device=torch.device("cpu")
+    )
+    response = response.replace("\x00", "").strip()
+    return {"response": response}

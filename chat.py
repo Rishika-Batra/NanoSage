@@ -6,11 +6,12 @@ Provides a colorful terminal interface to chat with a fine-tuned instruction mod
 Supports multi-turn dialogue context up to 3 turns, generation parameters,
 and custom command shortcuts.
 """
-
+ 
 import argparse
 import os
 import sys
 import time
+# pyrefly: ignore [missing-import]
 import torch
 
 from nanosage.tokenizer.bpe import BPETokenizer
