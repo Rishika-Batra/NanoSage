@@ -4,7 +4,7 @@ import Login from './Login'
 import { saveSessions, loadSessions } from './firestore'
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 const GREETINGS = [
