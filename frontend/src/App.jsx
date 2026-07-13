@@ -381,48 +381,6 @@ export default function App() {
       const controller = new AbortController()
       abortRef.current = controller
 
-      // Select model based on whether we have an image
-      // Build Gemini request
-      if (hasImage) {
-        // Vision API: send image as base64 content part
-        const base64Data = currentImageAttachment.base64
-        // Extract the data URL parts
-        const mediaType = base64Data.split(';')[0].split(':')[1]
-        const base64Only = base64Data.split(',')[1]
-
-        apiMessages = [
-          { role: 'system', content: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. You can analyze images. Current date and time: ${new Date().toLocaleString()}.` },
-          ...historyPairs.slice(-3).flatMap(h => [
-            { role: 'user', content: h.user },
-            { role: 'assistant', content: h.assistant }
-          ]),
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mediaType};base64,${base64Only}`,
-                },
-              },
-              {
-                type: 'text',
-                text: text,
-              },
-            ],
-          },
-        ]
-      } else {
-        apiMessages = [
-          { role: 'system', content: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. Current date and time: ${new Date().toLocaleString()}.` },
-          ...historyPairs.slice(-3).flatMap(h => [
-            { role: 'user', content: h.user },
-            { role: 'assistant', content: h.assistant }
-          ]),
-          { role: 'user', content: apiContent }
-        ]
-      }
-
       // Build Gemini request
       let geminiContents = []
 
