@@ -3,10 +3,8 @@ import './index.css'
 import Login from './Login'
 import { saveSessions, loadSessions } from './firestore'
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const TEXT_MODEL = 'llama-3.1-8b-instant'
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 const GREETINGS = [
@@ -428,25 +426,51 @@ export default function App() {
         ]
       }
 
-      const response = await fetch(GROQ_URL, {
+      // Build Gemini request
+      let geminiContents = []
+
+      // Add history
+      for (const h of historyPairs.slice(-3)) {
+        geminiContents.push({ role: 'user', parts: [{ text: h.user }] })
+        geminiContents.push({ role: 'model', parts: [{ text: h.assistant }] })
+      }
+
+      // Add current message
+      if (hasImage) {
+        const base64Data = currentImageAttachment.base64
+        const mediaType = base64Data.split(';')[0].split(':')[1]
+        const base64Only = base64Data.split(',')[1]
+        geminiContents.push({
+          role: 'user',
+          parts: [
+            { inline_data: { mime_type: mediaType, data: base64Only } },
+            { text: text }
+          ]
+        })
+      } else {
+        geminiContents.push({ role: 'user', parts: [{ text: apiContent }] })
+      }
+
+      const response = await fetch(GEMINI_URL, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model,
-          messages: apiMessages,
-          max_tokens: 1024,
-          temperature: 0.7,
+          system_instruction: {
+            parts: [{ text: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. Current date and time: ${new Date().toLocaleString()}.` }]
+          },
+          contents: geminiContents,
+          generationConfig: {
+            maxOutputTokens: 1024,
+            temperature: 0.7,
+          }
         }),
         signal: controller.signal,
       })
 
-      if (!response.ok) throw new Error(`Groq API error: ${response.status}`)
+      if (!response.ok) throw new Error(`Gemini API error: ${response.status}`)
 
-      const groqData = await response.json()
-      let accumulated = groqData.choices?.[0]?.message?.content || '(no response)'
+      const geminiData = await response.json()
+      let accumulated = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '(no response)'
 
       // Clean up response — remove echoed instruction
       if (accumulated.includes('### Response:')) {
