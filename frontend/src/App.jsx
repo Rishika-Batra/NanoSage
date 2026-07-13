@@ -382,10 +382,7 @@ export default function App() {
       abortRef.current = controller
 
       // Select model based on whether we have an image
-      const model = hasImage ? VISION_MODEL : TEXT_MODEL
-
-      // Build messages array
-      let apiMessages
+      // Build Gemini request
       if (hasImage) {
         // Vision API: send image as base64 content part
         const base64Data = currentImageAttachment.base64
