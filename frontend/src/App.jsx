@@ -3,8 +3,8 @@ import './index.css'
 import Login from './Login'
 import { saveSessions, loadSessions } from './firestore'
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 const GREETINGS = [
@@ -381,48 +381,52 @@ export default function App() {
       const controller = new AbortController()
       abortRef.current = controller
 
-      // Build Gemini request
-      let geminiContents = []
-
-      for (const h of historyPairs.slice(-3)) {
-        geminiContents.push({ role: 'user', parts: [{ text: h.user }] })
-        geminiContents.push({ role: 'model', parts: [{ text: h.assistant }] })
-      }
-
+      // Build Groq messages
+      let apiMessages
       if (hasImage) {
         const base64Data = currentImageAttachment.base64
         const mediaType = base64Data.split(';')[0].split(':')[1]
         const base64Only = base64Data.split(',')[1]
-        geminiContents.push({
-          role: 'user',
-          parts: [
-            { inline_data: { mime_type: mediaType, data: base64Only } },
-            { text: text }
-          ]
-        })
+        apiMessages = [
+          { role: 'system', content: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. Current date: ${new Date().toLocaleString()}.` },
+          ...historyPairs.slice(-3).flatMap(h => [
+            { role: 'user', content: h.user },
+            { role: 'assistant', content: h.assistant }
+          ]),
+          { role: 'user', content: [
+            { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64Only}` } },
+            { type: 'text', text: text }
+          ]}
+        ]
       } else {
-        geminiContents.push({ role: 'user', parts: [{ text: apiContent }] })
+        apiMessages = [
+          { role: 'system', content: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. Current date: ${new Date().toLocaleString()}.` },
+          ...historyPairs.slice(-3).flatMap(h => [
+            { role: 'user', content: h.user },
+            { role: 'assistant', content: h.assistant }
+          ]),
+          { role: 'user', content: apiContent }
+        ]
       }
 
-      const response = await fetch(GEMINI_URL, {
+      const response = await fetch(GROQ_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: `You are NanoSage, a helpful AI assistant built from scratch in PyTorch. Current date and time: ${new Date().toLocaleString()}.` }]
-          },
-          contents: geminiContents,
-          generationConfig: {
-            temperature: 0.7,
-          }
+          model: hasImage ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.3-70b-versatile',
+          messages: apiMessages,
+          temperature: 0.7,
         }),
         signal: controller.signal,
       })
 
-      if (!response.ok) throw new Error(`Gemini API error: ${response.status}`)
+      if (!response.ok) throw new Error(`Groq API error: ${response.status}`)
 
-      const geminiData = await response.json()
-      let accumulated = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '(no response)'
+      const groqData = await response.json()
+      let accumulated = groqData.choices?.[0]?.message?.content || '(no response)'
 
       // Clean up response — remove echoed instruction
       if (accumulated.includes('### Response:')) {
