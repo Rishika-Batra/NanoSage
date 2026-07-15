@@ -17,6 +17,9 @@ A clean, minimal, educational implementation of a **LLaMA-style GPT** autoregres
 
 NanoSage covers the complete LLM lifecycle: **pretraining → instruction finetuning → evaluation → interactive inference** — all written in pure, readable Python without heavy frameworks.
 
+> [!NOTE]
+> For educational purposes, the custom NanoSage model was trained from scratch on the `TinyStories` dataset. However, for the current production deployment and frontend, it has been updated to use the **Groq API** (running Llama 3) to provide faster and higher-quality inference.
+
 ---
 
 ## 📋 Table of Contents
